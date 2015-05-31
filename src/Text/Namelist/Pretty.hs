@@ -1,16 +1,22 @@
+{-# LANGUAGE CPP #-}
+
 module Text.Namelist.Pretty
     ( DString, toString
     , prettyNamelist
     , PrettyConfig(..), Mode(..)
     ) where
 
-import Data.Complex
+import Data.Complex(Complex((:+)))
 import Data.CaseInsensitive (CI, original)
 import Data.List(intersperse)
 import Data.Char(toUpper)
 
+#if !MIN_VERSION_base(4,8,0)
+import Data.Monoid(Monoid(..))
+#endif
+
 import Data.Monoid((<>))
-import Data.Default.Class
+import Data.Default.Class(Default(def))
 
 import Text.Namelist.Types
 

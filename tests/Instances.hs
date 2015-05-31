@@ -1,9 +1,17 @@
+{-# LANGUAGE CPP #-}
+{-# OPTIONS_GHC -fno-warn-orphans #-}
+
 module Instances where
 
-import Control.Monad
+import Control.Monad(replicateM)
+
+#if !MIN_VERSION_base(4,8,0)
+import Control.Applicative((<$>), (<*>), pure)
+#endif
+
 import Test.Tasty.QuickCheck
 import Text.Namelist.Types
-import Data.Complex
+import Data.Complex(Complex((:+)))
 import Data.CaseInsensitive(mk)
 import Data.Char(toUpper)
 import Numeric(showFFloat)

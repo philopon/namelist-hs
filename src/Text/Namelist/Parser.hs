@@ -1,11 +1,16 @@
 {-# LANGUAGE FlexibleContexts #-}
+{-# LANGUAGE CPP #-}
 
 module Text.Namelist.Parser (namelist) where
 
 import Text.Parsec hiding (letter)
-import Data.Complex
+import Data.Complex(Complex((:+)))
 import Data.Char (toUpper, toLower, isDigit)
 import Data.CaseInsensitive (CI, mk)
+
+#if !MIN_VERSION_base(4,8,0)
+import Control.Applicative ((<$>), (<$), (<*>), (<*), (*>), pure)
+#endif
 
 import Text.Namelist.Types
 
