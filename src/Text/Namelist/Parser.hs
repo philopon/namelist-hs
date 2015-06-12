@@ -128,8 +128,8 @@ mulValue = (:*) <$> unsignedInteger <*> (char '*' *> literal)
 
 index :: Stream s m Char => ParsecT s u m Index
 index = choice
-    [ try $ Step  <$> u <*> s u <*> s i
-    , try $ Range <$> u <*> s u
+    [ try $ Range <$> optionMaybe u <*> s (optionMaybe u) <*> s (optionMaybe i)
+    , try $ Range <$> optionMaybe u <*> s (optionMaybe u) <*> pure Nothing
     , try $ Index <$> u
     ] <?> "index"
   where

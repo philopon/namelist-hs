@@ -1,6 +1,7 @@
 module Text.Namelist
     ( module Text.Namelist.Types
-    , parse, pretty
+    , parse
+    , Pretty, pretty
     , prettyCompact
     ) where
 
@@ -14,11 +15,11 @@ import qualified Text.Parsec as P
 parse :: String -> Either P.ParseError [Group]
 parse = P.parse namelist ""
 
-prettyWith :: PrettyConfig -> [Group] -> String
-prettyWith cfg = toString . prettyNamelist cfg
+prettyWith :: Pretty a => PrettyConfig -> a -> String
+prettyWith cfg = toString . ppr cfg
 
-prettyCompact :: [Group] -> String
+prettyCompact :: Pretty a => a -> String
 prettyCompact = prettyWith def { mode = Compact, pairSeparator = "=" }
 
-pretty :: [Group] -> String
+pretty :: Pretty a => a -> String
 pretty = prettyWith def

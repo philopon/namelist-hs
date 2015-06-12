@@ -1,8 +1,9 @@
+{-# LANGUAGE FlexibleInstances #-}
 {-# LANGUAGE CPP #-}
 
 module Text.Namelist.Pretty
     ( DString, toString
-    , prettyNamelist
+    , Pretty(..)
     , PrettyConfig(..), Mode(..)
     ) where
 
@@ -25,6 +26,8 @@ newtype DString = DString (String -> String)
 instance Monoid DString where
     mempty = DString id
     mappend (DString a) (DString b) = DString (a . b)
+    {-# INLINABLE mempty #-}
+    {-# INLINABLE mappend #-}
 
 toString :: DString -> String
 toString (DString d) = d []
@@ -54,75 +57,93 @@ cfgCompact _ = False
 
 instance Default PrettyConfig where
     def = PrettyConfig (map toUpper) " = " (Large 2)
+    {-# INLINABLE def #-}
 
-prettyIndex :: Index -> DString
-prettyIndex (Index i)     = fromShow i
-prettyIndex (Range a b)   = fromShow a <> singleton ':' <> fromShow b
-prettyIndex (Step  a b s) = prettyIndex (Range a b) <> singleton ':' <> fromShow s
+class Pretty a where
+    ppr :: PrettyConfig -> a -> DString
 
-prettyIndices :: [Index] -> DString
-prettyIndices = mconcat . intersperse (singleton ',') . map prettyIndex
+instance Pretty Index where
+    ppr _ (Index i)     = fromShow i
+    ppr _ (Range l h s) = opt l <> colon <> opt h <> step
+      where
+        opt   = maybe mempty fromShow
+        colon = singleton ':'
+        step  = maybe mempty (\t -> colon <> fromShow t) s
+    {-# INLINABLE ppr #-}
+
+surround :: Char -> Char -> DString -> DString
+surround a b c = singleton a <> c <> singleton b
+
+instance Pretty [Index] where
+    ppr _ = surround '(' ')' . mconcat . intersperse (singleton ',') . map (ppr def)
+    {-# INLINABLE ppr #-}
 
 ci :: CI String -> DString
 ci = fromString . original
 
-prettyKey :: Key -> DString
-prettyKey (Key k)       = ci k
-prettyKey (Indexed k i) = ci k <> singleton '(' <> prettyIndices i <> singleton ')'
-prettyKey (Sub k s)     = ci k <> singleton '%' <> prettyKey s
+instance Pretty Key where
+    ppr _ (Key k)       = ci k
+    ppr _ (Indexed k i) = ci k <> ppr def i
+    ppr _ (Sub k s)     = ci k <> singleton '%' <> ppr def s
+    {-# INLINABLE ppr #-}
 
-prettyValue :: PrettyConfig -> Value -> DString
-prettyValue _   (Integer i) = fromShow i
-prettyValue _   (Real r)    = fromShow r
+instance Pretty Value where
+    ppr _   (Integer i) = fromShow i
+    ppr _   (Real r)    = fromShow r
 
-prettyValue cfg (Complex (r :+ i)) = singleton '(' <> fromShow r <> singleton ',' <> sp <> fromShow i <> singleton ')'
-  where
-    sp = if cfgCompact cfg then mempty else singleton ' '
+    ppr cfg (Complex (r :+ i)) = singleton '(' <> fromShow r <> singleton ',' <> sp <> fromShow i <> singleton ')'
+      where
+        sp = if cfgCompact cfg then mempty else singleton ' '
 
-prettyValue cfg (Logical True)  = fromString . prettyLogical cfg $ if cfgCompact cfg then "T" else ".True."
-prettyValue cfg (Logical False) = fromString . prettyLogical cfg $ if cfgCompact cfg then "F" else ".False."
+    ppr cfg (Logical True)  = fromString . prettyLogical cfg $ if cfgCompact cfg then "T" else ".True."
+    ppr cfg (Logical False) = fromString . prettyLogical cfg $ if cfgCompact cfg then "F" else ".False."
 
-prettyValue _   (String s)
-    | '\'' `notElem` s = singleton '\'' <> fromString s <> singleton '\''
-    | '"'  `notElem` s = singleton '"'  <> fromString s <> singleton '"'
-    | otherwise = singleton '\'' <> fromString (concatMap escape s) <> singleton '\''
-  where
-    escape '\'' = "''"
-    escape a    = [a]
+    ppr _   (String s)
+        | '\'' `notElem` s = singleton '\'' <> fromString s <> singleton '\''
+        | '"'  `notElem` s = singleton '"'  <> fromString s <> singleton '"'
+        | otherwise = singleton '\'' <> fromString (concatMap escape s) <> singleton '\''
+      where
+        escape '\'' = "''"
+        escape a    = [a]
 
-prettyValue cfg (Array a) = mconcat . intersperse sep $ map (prettyValue cfg) a
-  where
-    sep = if cfgCompact cfg then singleton ',' else fromString ", "
+    ppr cfg (Array a) = mconcat . intersperse sep $ map (ppr cfg) a
+      where
+        sep = if cfgCompact cfg then singleton ',' else fromString ", "
 
-prettyValue cfg (r :* v)  = fromShow r <> singleton '*' <> prettyValue cfg v
+    ppr cfg (r :* v)  = fromShow r <> singleton '*' <> ppr cfg v
 
-prettyValue _   Null = mempty
+    ppr _   Null = mempty
+    {-# INLINABLE ppr #-}
 
-prettyPair :: PrettyConfig -> Pair -> DString
-prettyPair cfg (k := v) = prettyKey k <> equal <> prettyValue cfg v
-  where
-    equal = if cfgCompact cfg then singleton '=' else fromString " = "
+instance Pretty Pair where
+    ppr cfg (k := v) = ppr cfg k <> equal <> ppr cfg v
+      where
+        equal = if cfgCompact cfg then singleton '=' else fromString " = "
+    {-# INLINABLE ppr #-}
 
-prettyPairs :: PrettyConfig -> [Pair] -> DString
-prettyPairs cfg@PrettyConfig{ mode = Compact } =
-    mconcat . intersperse (fromString ", ") . map (prettyPair cfg)
+instance Pretty [Pair] where
+    ppr cfg@PrettyConfig{ mode = Compact } =
+        mconcat . intersperse (fromString ", ") . map (ppr cfg)
 
-prettyPairs cfg@PrettyConfig{ mode = Large i } =
-    mconcat . intersperse (fromString ",\n") . map (\p -> ind <> prettyPair cfg p)
-  where
-    ind = fromString $ replicate i ' '
+    ppr cfg@PrettyConfig{ mode = Large i } =
+        mconcat . intersperse (fromString ",\n") . map (\p -> ind <> ppr cfg p)
+      where
+        ind = fromString $ replicate i ' '
+    {-# INLINABLE ppr #-}
 
-prettyGroup :: PrettyConfig -> Group -> DString
-prettyGroup cfg (Group g ps) = singleton '&' <> ci g <> gsp <> prettyPairs cfg ps <> ged
-  where
-    gsp = if cfgCompact cfg then singleton ' ' else singleton '\n'
-    ged = if cfgCompact cfg
-          then fromString " /"
-          else if null ps then singleton '/' else fromString "\n/"
+instance Pretty Group where
+    ppr cfg (Group g ps) = singleton '&' <> ci g <> gsp <> ppr cfg ps <> ged
+      where
+        gsp = if cfgCompact cfg then singleton ' ' else singleton '\n'
+        ged = if cfgCompact cfg
+              then fromString " /"
+              else if null ps then singleton '/' else fromString "\n/"
+    {-# INLINABLE ppr #-}
 
-prettyNamelist :: PrettyConfig -> [Group] -> DString
-prettyNamelist cfg@PrettyConfig{ mode = Compact } =
-    mconcat . intersperse (singleton ' ') . map (prettyGroup cfg)
+instance Pretty [Group] where
+    ppr cfg@PrettyConfig{ mode = Compact } =
+        mconcat . intersperse (singleton ' ') . map (ppr cfg)
 
-prettyNamelist cfg@PrettyConfig{ mode = Large _ } =
-    mconcat . intersperse (singleton '\n') . map (prettyGroup cfg)
+    ppr cfg@PrettyConfig{ mode = Large _ } =
+        mconcat . intersperse (singleton '\n') . map (ppr cfg)
+    {-# INLINABLE ppr #-}

@@ -28,21 +28,17 @@ arbitraryIndex = do
 
 arbitraryRange :: Gen Index
 arbitraryRange = do
-    a <- choose (1, maxBound - 1)
-    b <- choose (a + 1, maxBound)
-    return $ Range a b
-
-arbitraryStep :: Gen Index
-arbitraryStep = do
-    Range a b <- arbitraryRange
-    s <- arbitrary
-    return $ Step a b s
+    a <- oneof [Just <$> choose (1, maxBound - 1),          pure Nothing]
+    b <- oneof [Just <$> choose (maybe 1 succ a, maxBound), pure Nothing]
+    s <- oneof [Just . unSmall <$> arbitrary,               pure Nothing]
+    return $ Range a b s
+  where
+    unSmall (Small a) = a
 
 instance Arbitrary Index where
     arbitrary = oneof
         [ arbitraryIndex
         , arbitraryRange
-        , arbitraryStep
         ]
 
 arbitraryName :: Gen String
